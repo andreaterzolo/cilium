@@ -711,7 +711,7 @@ func TestUpdateCIDRSets_ShrinkPool(t *testing.T) {
 	newCIDRs := []netip.Prefix{netip.MustParsePrefix("10.1.0.0/16")}
 
 	assert.NotPanics(t, func() {
-		updated, err := p.updateCIDRSets(false, pool.v4, newCIDRs, 24)
+		updated, _, err := p.updateCIDRSets(false, pool.v4, newCIDRs, 24)
 		assert.NoError(t, err)
 		assert.Len(t, updated, 1)
 		assert.True(t, updated[0].IsClusterCIDR(newCIDRs[0]))
