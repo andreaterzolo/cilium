@@ -144,7 +144,7 @@ func (driver *Driver) watchConfig(ctx context.Context) <-chan v2alpha1.CiliumNet
 				continue
 			}
 
-			driver.logger.DebugContext(ctx, "network driver configuration found")
+			driver.logger.InfoContext(ctx, "network driver configuration found")
 
 			handled = true
 			ch <- *cfg
@@ -174,15 +174,11 @@ func (driver *Driver) Start(ctx cell.HookContext) error {
 
 		driver.config = &cfg
 
-		driver.logger.DebugContext(
-			ctx, "Starting network driver...",
+		driver.logger.InfoContext(
+			ctx, "Processing network driver config",
 			logfields.K8sAPIVersion, version.Version(),
-			logfields.DriverName, driver.config.DriverName,
+			logfields.Config, driver.config,
 		)
-
-		driver.logger.DebugContext(ctx,
-			"starting driver with config",
-			logfields.Config, driver.config)
 
 		if err := validateConfig(driver.config); err != nil {
 			driver.logger.ErrorContext(
