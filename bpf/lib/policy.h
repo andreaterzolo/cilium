@@ -358,6 +358,17 @@ policy_can_access(const struct __ctx_buff *ctx, __u32 local_id, __u32 remote_id,
 				   is_untracked_fragment, match_type, proxy_port, cookie);
 }
 
+static __always_inline int handle_policy_audit(__u8 *audited, int ret)
+{
+    const bool is_policy_audit_enabled = CONFIG(enable_policy_audit_mode);
+	if (is_policy_audit_enabled) {
+		*audited = 1;
+		return CTX_ACT_OK;
+	}
+    *audited = 0;
+	return ret;
+}
+
 /**
  * Determine whether the policy allows this traffic on ingress.
  * @arg ctx		Packet to allow or deny
@@ -394,13 +405,7 @@ policy_can_ingress(const struct __ctx_buff *ctx, __u32 src_id, __u32 dst_id,
 
 	cilium_dbg(ctx, DBG_POLICY_DENIED, src_id, dst_id);
 
-	*audited = 0;
-	if (CONFIG(enable_policy_audit_mode) && IS_ERR(ret)) {
-		ret = CTX_ACT_OK;
-		*audited = 1;
-	}
-
-	return ret;
+	return handle_policy_audit(audited, ret);
 }
 
 static __always_inline int policy_can_ingress6(const struct __ctx_buff *ctx,
@@ -451,12 +456,7 @@ policy_can_egress(const struct __ctx_buff *ctx, __u32 src_id, __u32 dst_id,
 	if (ret >= 0)
 		return ret;
 	cilium_dbg(ctx, DBG_POLICY_DENIED, src_id, dst_id);
-	*audited = 0;
-	if (CONFIG(enable_policy_audit_mode) && IS_ERR(ret)) {
-		ret = CTX_ACT_OK;
-		*audited = 1;
-	}
-	return ret;
+	return handle_policy_audit(audited, ret);
 }
 
 static __always_inline int policy_can_egress6(const struct __ctx_buff *ctx,

@@ -210,7 +210,9 @@ func loadAndRunSpec(t *testing.T, entry fs.DirEntry, instrLog io.Writer, testNet
 	}
 
 	if !collectCoverage {
-		coll, _, err = bpf.LoadCollection(logger, spec, nil)
+		opts := &bpf.CollectionOptions{}
+		opts.Programs.LogLevel = ebpf.LogLevelBranch
+		coll, _, err = bpf.LoadCollection(logger, spec, opts)
 	} else {
 		coll, cfg, err = coverbee.InstrumentAndLoadCollection(spec, ebpf.CollectionOptions{}, localBuf)
 	}

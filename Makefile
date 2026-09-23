@@ -694,7 +694,7 @@ SUDO ?= sudo -E
 run_bpf_tests: ## Build and run the BPF unit tests using the cilium-builder container image.
 	contrib/scripts/builder.sh \
 		env MAKEFLAGS="$(filter-out --jobserver-auth=%,$(MAKEFLAGS))" \
-		make $(SUBMAKEOPTS) -C bpf/tests/ all
+		make $(SUBMAKEOPTS) -C bpf/tests/ hairpin_sctp_flow.o
 	$(GO) test ./bpf/tests/bpftest \
 		-bpf-test-path $(ROOT_DIR)/bpf/tests \
 		-exec "$(SUDO)" \

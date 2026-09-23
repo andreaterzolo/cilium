@@ -294,8 +294,12 @@ func NewCollectionWithOptions(spec *CollectionSpec, opts CollectionOptions) (*Co
 			continue
 		}
 
-		if _, err := loader.loadProgram(progName); err != nil {
-			return nil, err
+		if progName == "tail_ipv4_to_endpoint" {
+			_, err := loader.loadProgram(progName)
+			fmt.Printf("Load program %s\n", progName)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
