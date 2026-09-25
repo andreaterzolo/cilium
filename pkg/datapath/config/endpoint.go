@@ -56,6 +56,7 @@ func Endpoint(ep endpoint.Config, lnc *Config) any {
 	cfg.EphemeralMin = lnc.EphemeralMin
 
 	cfg.EnablePolicyAccounting = lnc.EnablePolicyAccounting
+	cfg.EnableTraceNotify = ep.GetOptions().IsEnabled(option.TraceNotify)
 	cfg.DebugLB = ep.GetOptions().IsEnabled(option.DebugLB)
 
 	cfg.MonitorAggregation = uint8(ep.GetOptions().GetValue(option.MonitorAggregation))

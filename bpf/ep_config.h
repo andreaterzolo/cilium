@@ -13,4 +13,3 @@
 #define DEBUG
 #endif
 #define DROP_NOTIFY
-#define TRACE_NOTIFY
