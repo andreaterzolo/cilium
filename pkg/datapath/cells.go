@@ -10,6 +10,7 @@ import (
 	"github.com/cilium/hive/cell"
 
 	"github.com/cilium/cilium/pkg/act"
+	"github.com/cilium/cilium/pkg/datapath/adnr"
 	"github.com/cilium/cilium/pkg/datapath/agentliveness"
 	"github.com/cilium/cilium/pkg/datapath/connector"
 	"github.com/cilium/cilium/pkg/datapath/gneigh"
@@ -162,6 +163,9 @@ var Cell = cell.Module(
 	// Provides the desired route table, and a reconciler that installs these desired routes
 	// into the Linux kernel routing table.
 	routeReconciler.Cell,
+
+	// Provides auto-direct node routes
+	adnr.Cell,
 
 	// Provides the desired device table, and a reconciler that install these links into the Linux kernel.
 	deviceReconciler.Cell,

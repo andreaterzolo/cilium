@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/cilium/ebpf/rlimit"
+	"github.com/cilium/hive/cell"
 	"github.com/cilium/hive/hivetest"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
@@ -20,6 +21,7 @@ import (
 	"go4.org/netipx"
 
 	"github.com/cilium/cilium/pkg/cidr"
+	"github.com/cilium/cilium/pkg/datapath/adnr"
 	"github.com/cilium/cilium/pkg/datapath/config"
 	"github.com/cilium/cilium/pkg/datapath/linux/ipsec"
 	fakeipsec "github.com/cilium/cilium/pkg/datapath/linux/ipsec/fake"
@@ -27,6 +29,7 @@ import (
 	"github.com/cilium/cilium/pkg/datapath/linux/route"
 	"github.com/cilium/cilium/pkg/datapath/linux/sysctl"
 	"github.com/cilium/cilium/pkg/datapath/tables"
+	"github.com/cilium/cilium/pkg/hive"
 	"github.com/cilium/cilium/pkg/ip"
 	"github.com/cilium/cilium/pkg/kpr"
 	nodemapfake "github.com/cilium/cilium/pkg/maps/nodemap/fake"
@@ -245,6 +248,34 @@ func TestPrivilegedUpdateNodeRoute(t *testing.T) {
 	})
 }
 
+func newTestADNRHandler(t *testing.T) *adnr.Handler {
+	t.Helper()
+	var (
+		adnrHandler *adnr.Handler
+	)
+	hive.New(
+		// routeReconciler.TableCell,
+		// cell.Provide(func() reconciler.Reconciler[*routeReconciler.DesiredRoute] {
+		// 	return nil
+		// }),
+		// cell.Invoke(func(
+		// 	db_ *statedb.DB,
+		// 	routes statedb.Table[*routeReconciler.DesiredRoute],
+		// 	manager *routeReconciler.DesiredRouteManager,
+		// ) {
+		// 	desiredRoutes = routes
+		// 	routeManager = manager
+		// }),
+		adnr.Cell,
+		cell.Invoke(func(
+			handler *adnr.Handler,
+		) {
+			adnrHandler = handler
+		}),
+	).Populate(hivetest.Logger(t))
+	return adnrHandler
+}
+
 func testUpdateNodeRoute(t *testing.T, family string) {
 	s := setup(t, family)
 
@@ -261,7 +292,7 @@ func testUpdateNodeRoute(t *testing.T, family string) {
 	a, err := ipsec.NewTestIPsecAgent(t, nil)
 	require.NoError(t, err)
 
-	lnh := newNodeHandler(log, dpConfig, nodemapfake.NewFakeNodeMapV2(), kpr.KPRConfig{}, a, fakeipsec.Config{}, lns)
+	lnh := newNodeHandler(log, dpConfig, nodemapfake.NewFakeNodeMapV2(), kpr.KPRConfig{}, a, fakeipsec.Config{}, lns, newTestADNRHandler(t))
 	mustConfigureNode(t, s.ns, lnh, s.nodeConfigTemplate)
 
 	if s.enableIPv4 {
@@ -305,7 +336,7 @@ func testAuxiliaryPrefixes(t *testing.T, family string) {
 	ipsecAgent, err := ipsec.NewTestIPsecAgent(t, nil)
 	require.NoError(t, err)
 
-	lnh := newNodeHandler(log, dpConfig, nodemapfake.NewFakeNodeMapV2(), kpr.KPRConfig{}, ipsecAgent, fakeipsec.Config{}, lns)
+	lnh := newNodeHandler(log, dpConfig, nodemapfake.NewFakeNodeMapV2(), kpr.KPRConfig{}, ipsecAgent, fakeipsec.Config{}, lns, newTestADNRHandler(t))
 	nodeConfig := s.nodeConfigTemplate
 	nodeConfig.AuxiliaryPrefixes = []*cidr.CIDR{net1, net2}
 	mustConfigureNode(t, s.ns, lnh, nodeConfig)
@@ -384,7 +415,7 @@ func commonNodeUpdateEncapsulation(t *testing.T, family string, encap bool, over
 	lns := node.NewTestLocalNodeStore(node.LocalNode{})
 	ipsecAgent, err := ipsec.NewTestIPsecAgent(t, nil)
 	require.NoError(t, err)
-	lnh := newNodeHandler(log, dpConfig, nodemapfake.NewFakeNodeMapV2(), kpr.KPRConfig{}, ipsecAgent, fakeipsec.Config{}, lns)
+	lnh := newNodeHandler(log, dpConfig, nodemapfake.NewFakeNodeMapV2(), kpr.KPRConfig{}, ipsecAgent, fakeipsec.Config{}, lns, newTestADNRHandler(t))
 
 	lnh.OverrideEnableEncapsulation(override)
 
@@ -549,7 +580,7 @@ func testNodeUpdateIDs(t *testing.T, family string) {
 	ipsecAgent, err := ipsec.NewTestIPsecAgent(t, nil)
 	require.NoError(t, err)
 
-	lnh := newNodeHandler(log, dpConfig, nodeMap, kpr.KPRConfig{}, ipsecAgent, fakeipsec.Config{}, lns)
+	lnh := newNodeHandler(log, dpConfig, nodeMap, kpr.KPRConfig{}, ipsecAgent, fakeipsec.Config{}, lns, newTestADNRHandler(t))
 
 	mustConfigureNode(t, s.ns, lnh, s.nodeConfigTemplate)
 
@@ -709,7 +740,7 @@ func testNodeChurnXFRMLeaksWithConfig(t *testing.T, s *nodeSuite, config config.
 
 	dpConfig := DatapathConfiguration{HostDevice: hostDevice}
 	lns := node.NewTestLocalNodeStore(node.LocalNode{})
-	lnh := newNodeHandler(log, dpConfig, nodemapfake.NewFakeNodeMapV2(), kpr.KPRConfig{}, a, fakeipsec.Config{}, lns)
+	lnh := newNodeHandler(log, dpConfig, nodemapfake.NewFakeNodeMapV2(), kpr.KPRConfig{}, a, fakeipsec.Config{}, lns, newTestADNRHandler(t))
 
 	mustConfigureNode(t, s.ns, lnh, config)
 
@@ -805,7 +836,7 @@ func testNodeUpdateDirectRouting(t *testing.T, family string) {
 	ipsecAgent, err := ipsec.NewTestIPsecAgent(t, nil)
 	require.NoError(t, err)
 
-	lnh := newNodeHandler(log, dpConfig, nodemapfake.NewFakeNodeMapV2(), kpr.KPRConfig{}, ipsecAgent, fakeipsec.Config{}, lns)
+	lnh := newNodeHandler(log, dpConfig, nodemapfake.NewFakeNodeMapV2(), kpr.KPRConfig{}, ipsecAgent, fakeipsec.Config{}, lns, newTestADNRHandler(t))
 
 	nodeConfig := s.nodeConfigTemplate
 	nodeConfig.Devices = append(slices.Clone(nodeConfig.Devices), dev1, dev2)
@@ -1045,7 +1076,7 @@ func testNodeValidationDirectRouting(t *testing.T, family string) {
 	ipsecAgent, err := ipsec.NewTestIPsecAgent(t, nil)
 	require.NoError(t, err)
 
-	lnh := newNodeHandler(log, dpConfig, nodemapfake.NewFakeNodeMapV2(), kpr.KPRConfig{}, ipsecAgent, fakeipsec.Config{}, lns)
+	lnh := newNodeHandler(log, dpConfig, nodemapfake.NewFakeNodeMapV2(), kpr.KPRConfig{}, ipsecAgent, fakeipsec.Config{}, lns, newTestADNRHandler(t))
 
 	nodeConfig := s.nodeConfigTemplate
 	nodeConfig.EnableEncapsulation = false
@@ -1190,7 +1221,7 @@ func testNodePodCIDRsChurnIPSec(t *testing.T, family string) {
 	a, err := ipsec.NewTestIPsecAgent(t, bytes.NewReader([]byte("6+ rfc4106(gcm(aes)) 44434241343332312423222114131211f4f3f2f1 128\n")))
 	require.NoError(t, err)
 	lns := node.NewTestLocalNodeStore(node.LocalNode{})
-	lnh := newNodeHandler(log, dpConfig, nodemapfake.NewFakeNodeMapV2(), kpr.KPRConfig{}, a, fakeipsec.Config{}, lns)
+	lnh := newNodeHandler(log, dpConfig, nodemapfake.NewFakeNodeMapV2(), kpr.KPRConfig{}, a, fakeipsec.Config{}, lns, newTestADNRHandler(t))
 
 	nodeConfig := s.nodeConfigTemplate
 	nodeConfig.Devices = append(slices.Clone(nodeConfig.Devices), dev1, dev2)
