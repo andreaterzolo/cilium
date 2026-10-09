@@ -180,6 +180,7 @@ const (
 func buildPrepClaim(devices ...string) *resourceapi.ResourceClaim {
 	rawParam, _ := json.Marshal(map[string]string{
 		"podIfName": "mydevice",
+		"ipv4Addr":  "10.0.0.1/32",
 	})
 
 	results := make([]resourceapi.DeviceRequestAllocationResult, 0, len(devices))
@@ -303,6 +304,7 @@ func buildPrepDriver(t *testing.T, cs *k8sClient.FakeClientset, devs ...*tracked
 		db:              db,
 		deviceTable:     deviceTable,
 		allocationTable: allocationTable,
+		ipv4Enabled:     true,
 	}
 }
 
