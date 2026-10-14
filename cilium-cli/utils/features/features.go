@@ -118,6 +118,8 @@ const (
 
 	Multicast Feature = "multicast-enabled"
 
+	NetworkDriver Feature = "enable-network-driver"
+
 	L7LoadBalancer Feature = "loadbalancer-l7"
 
 	RHEL Feature = "rhel"
@@ -399,6 +401,10 @@ func (fs Set) ExtractFromConfigMap(cm *v1.ConfigMap) {
 
 	fs[Multicast] = Status{
 		Enabled: cm.Data[string(Multicast)] == "true",
+	}
+
+	fs[NetworkDriver] = Status{
+		Enabled: cm.Data[string(NetworkDriver)] == "true",
 	}
 
 	fs[EncryptionStrictModeEgress] = Status{
