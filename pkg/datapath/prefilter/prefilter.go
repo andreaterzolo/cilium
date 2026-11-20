@@ -27,16 +27,6 @@ type PreFilter interface {
 	Delete(revision int64, cidrs []net.IPNet) error
 }
 
-type preFilterMapType int
-
-const (
-	prefixesV4Dyn preFilterMapType = iota
-	prefixesV4Fix
-	prefixesV6Dyn
-	prefixesV6Fix
-	mapCount
-)
-
 const (
 	// Arbitrary chosen for now. We don't preallocate elements,
 	// so we could bump the limit if needed later on.
@@ -44,12 +34,23 @@ const (
 	maxHKeys = 1024 * 1024 * 20
 )
 
-type preFilterMaps [mapCount]*cidrmap.CIDRMap
+type preFilterMapSpec struct {
+	name      string
+	prefixlen int
+	prefixdyn bool
+}
+
+var preFilterMapSpecs = []preFilterMapSpec{
+	{datapathmaps.CiliumCIDRV4Dyn, net.IPv4len * 8, true},
+	{datapathmaps.CiliumCIDRV4Fix, net.IPv4len * 8, false},
+	{datapathmaps.CiliumCIDRV6Dyn, net.IPv6len * 8, true},
+	{datapathmaps.CiliumCIDRV6Fix, net.IPv6len * 8, false},
+}
 
 // PreFilter holds global info on related CIDR maps participating in prefilter
 type preFilter struct {
 	logger   *slog.Logger
-	maps     preFilterMaps
+	maps     map[string]*cidrmap.CIDRMap
 	revision int64
 	mutex    lock.RWMutex
 
@@ -67,11 +68,11 @@ func (p *preFilter) WriteConfig(fw io.Writer) {
 	fmt.Fprintf(fw, "#define CIDR6_LPM_PREFILTER\n")
 }
 
-func (p *preFilter) dumpOneMap(which preFilterMapType, to []string) []string {
-	if p.maps[which] == nil {
+func (p *preFilter) dumpOneMap(name string, to []string) []string {
+	if p.maps[name] == nil {
 		return to
 	}
-	return p.maps[which].CIDRDump(to)
+	return p.maps[name].CIDRDump(to)
 }
 
 func (p *preFilter) Enabled() bool {
@@ -86,25 +87,25 @@ func (p *preFilter) Dump(to []string) ([]string, int64) {
 
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
-	for i := range mapCount {
-		to = p.dumpOneMap(i, to)
+	for _, spec := range preFilterMapSpecs {
+		to = p.dumpOneMap(spec.name, to)
 	}
 	return to, p.revision
 }
 
-func (p *preFilter) selectMap(ones, bits int) preFilterMapType {
+func (p *preFilter) selectMap(ones, bits int) (string, bool) {
 	if bits == net.IPv4len*8 {
 		if ones == bits {
-			return prefixesV4Fix
+			return datapathmaps.CiliumCIDRV4Fix, true
 		}
-		return prefixesV4Dyn
+		return datapathmaps.CiliumCIDRV4Dyn, true
 	} else if bits == net.IPv6len*8 {
 		if ones == bits {
-			return prefixesV6Fix
+			return datapathmaps.CiliumCIDRV6Fix, true
 		}
-		return prefixesV6Dyn
+		return datapathmaps.CiliumCIDRV6Dyn, true
 	} else {
-		return mapCount
+		return "", false
 	}
 }
 
@@ -124,12 +125,12 @@ func (p *preFilter) Insert(revision int64, cidrs []net.IPNet) error {
 	}
 	for _, cidr := range cidrs {
 		ones, bits := cidr.Mask.Size()
-		which := p.selectMap(ones, bits)
-		if which == mapCount || p.maps[which] == nil {
+		name, ok := p.selectMap(ones, bits)
+		if !ok || p.maps[name] == nil {
 			ret = fmt.Errorf("No map enabled for CIDR string %s", cidr.String())
 			break
 		}
-		err := p.maps[which].InsertCIDR(cidr)
+		err := p.maps[name].InsertCIDR(cidr)
 		if err != nil {
 			ret = fmt.Errorf("Error inserting CIDR string %s: %w", cidr.String(), err)
 			break
@@ -143,8 +144,8 @@ func (p *preFilter) Insert(revision int64, cidrs []net.IPNet) error {
 	}
 	for _, cidr := range undoQueue {
 		ones, bits := cidr.Mask.Size()
-		which := p.selectMap(ones, bits)
-		p.maps[which].DeleteCIDR(cidr)
+		name, _ := p.selectMap(ones, bits)
+		p.maps[name].DeleteCIDR(cidr)
 	}
 	return ret
 }
@@ -165,19 +166,19 @@ func (p *preFilter) Delete(revision int64, cidrs []net.IPNet) error {
 	}
 	for _, cidr := range cidrs {
 		ones, bits := cidr.Mask.Size()
-		which := p.selectMap(ones, bits)
-		if which == mapCount || p.maps[which] == nil {
+		name, ok := p.selectMap(ones, bits)
+		if !ok || p.maps[name] == nil {
 			return fmt.Errorf("No map enabled for CIDR string %s", cidr.String())
 		}
 		// Lets check obvious cases first, so we don't need to painfully unroll
-		if !p.maps[which].CIDRExists(cidr) {
+		if !p.maps[name].CIDRExists(cidr) {
 			return fmt.Errorf("No map entry for CIDR string %s", cidr.String())
 		}
 	}
 	for _, cidr := range cidrs {
 		ones, bits := cidr.Mask.Size()
-		which := p.selectMap(ones, bits)
-		err := p.maps[which].DeleteCIDR(cidr)
+		name, _ := p.selectMap(ones, bits)
+		err := p.maps[name].DeleteCIDR(cidr)
 		if err != nil {
 			ret = fmt.Errorf("Error deleting CIDR string %s: %w", cidr.String(), err)
 			break
@@ -191,47 +192,24 @@ func (p *preFilter) Delete(revision int64, cidrs []net.IPNet) error {
 	}
 	for _, cidr := range undoQueue {
 		ones, bits := cidr.Mask.Size()
-		which := p.selectMap(ones, bits)
-		p.maps[which].InsertCIDR(cidr)
+		name, _ := p.selectMap(ones, bits)
+		p.maps[name].InsertCIDR(cidr)
 	}
 	return ret
 }
 
-func (p *preFilter) initOneMap(reg *registry.MapRegistry, which preFilterMapType) error {
-	var prefixdyn bool
-	var prefixlen int
-	var name string
-	var err error
-
-	switch which {
-	case prefixesV4Dyn:
-		prefixlen = net.IPv4len * 8
-		prefixdyn = true
-		name = datapathmaps.CiliumCIDRV4Dyn
-	case prefixesV4Fix:
-		prefixlen = net.IPv4len * 8
-		prefixdyn = false
-		name = datapathmaps.CiliumCIDRV4Fix
-	case prefixesV6Dyn:
-		prefixlen = net.IPv6len * 8
-		prefixdyn = true
-		name = datapathmaps.CiliumCIDRV6Dyn
-	case prefixesV6Fix:
-		prefixlen = net.IPv6len * 8
-		prefixdyn = false
-		name = datapathmaps.CiliumCIDRV6Fix
-	}
-
-	p.maps[which], err = cidrmap.OpenMapFromRegistry(reg, p.logger, name, prefixlen, prefixdyn)
+func (p *preFilter) initOneMap(reg *registry.MapRegistry, spec preFilterMapSpec) error {
+	m, err := cidrmap.OpenMapFromRegistry(reg, p.logger, spec.name, spec.prefixlen, spec.prefixdyn)
 	if err != nil {
 		return err
 	}
+	p.maps[spec.name] = m
 	return nil
 }
 
 func (p *preFilter) init(reg *registry.MapRegistry) error {
-	for i := range mapCount {
-		if err := p.initOneMap(reg, i); err != nil {
+	for _, spec := range preFilterMapSpecs {
+		if err := p.initOneMap(reg, spec); err != nil {
 			return err
 		}
 	}
@@ -247,6 +225,7 @@ func newPreFilter(
 ) PreFilter {
 	p := &preFilter{
 		logger:   logger,
+		maps:     make(map[string]*cidrmap.CIDRMap),
 		revision: 1,
 		enabled:  config.EnableXDPPrefilter,
 	}
