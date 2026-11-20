@@ -44,6 +44,9 @@
 #include "lib/nodeport.h"
 #include "lib/tailcall.h"
 
+#define CIDR4_HMAP_ELEMS 1024
+#define CIDR4_LMAP_ELEMS 1024
+
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
 	__type(key, struct lpm_v4_key);
