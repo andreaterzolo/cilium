@@ -14,8 +14,7 @@ import (
 )
 
 const (
-	MapName    = "cilium_cidr_"
-	MaxEntries = 16384
+	MapName = "cilium_cidr_"
 )
 
 // CIDRMap refers to an LPM trie map at 'path'.

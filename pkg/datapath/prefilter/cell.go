@@ -24,6 +24,12 @@ var Cell = cell.Module(
 )
 
 func configure(reg *registry.MapRegistry) error {
+	const (
+		// Arbitrary chosen for now. We don't preallocate elements,
+		// so we could bump the limit if needed later on.
+		maxLKeys = 1024 * 64
+		maxHKeys = 1024 * 1024 * 20
+	)
 	for _, mapCfg := range []struct {
 		name       string
 		maxEntries uint32
