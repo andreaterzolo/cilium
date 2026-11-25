@@ -17,5 +17,6 @@ func (t networkDriverDummy) build(ct *check.ConnectivityTest, _ map[string]strin
 	newTest("network-driver-dummy", ct).
 		WithCiliumVersion(">=1.21.0-0").
 		WithFeatureRequirements(features.RequireEnabled(features.NetworkDriver)).
-		WithScenarios(tests.NetworkDriverDummy()...)
+		WithSetupFunc(tests.SetupNetworkDriverDummy).
+		WithScenarios(tests.NetworkDriverScenarios()...)
 }

@@ -53,10 +53,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ inputs.PR-number || github.event.after }}
   cancel-in-progress: true
 
-env:
-  # Dummy devices published per node. The multi-device scenarios need 2.
-  dummy_device_count: 8
-
 jobs:
   echo-inputs:
     if: ${{ github.event_name == 'workflow_dispatch' }}
@@ -212,59 +208,6 @@ jobs:
         run: |
           cilium status --wait --interactive=false
           kubectl -n kube-system get pods
-
-      # One ClusterConfig per node, each selecting its node by hostname.
-      - name: Configure network driver with dummy devices
-        run: |
-          for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-            cat <<EOF | kubectl apply -f -
-          apiVersion: cilium.io/v2alpha1
-          kind: CiliumNetworkDriverClusterConfig
-          metadata:
-            name: ci-dummy-${node}
-          spec:
-            nodeSelector:
-              matchLabels:
-                kubernetes.io/hostname: ${node}
-            spec:
-              deviceManagerConfigs:
-                dummy:
-                  enabled: true
-                  count: ${{ env.dummy_device_count }}
-              pools:
-              - name: ci-dummy
-                filter:
-                  deviceManagers:
-                  - dummy
-          EOF
-          done
-
-          selected=$(kubectl get nodes --no-headers | wc -l)
-          # Wait for the operator to generate a NodeConfig per node.
-          for _ in $(seq 1 60); do
-            n=$(kubectl get ciliumnetworkdrivernodeconfigs --no-headers 2>/dev/null | wc -l)
-            [ "$n" -eq "$selected" ] && break
-            sleep 2
-          done
-          kubectl get ciliumnetworkdrivernodeconfigs
-          if [ "$n" -ne "$selected" ]; then
-            echo "Expected $selected NodeConfigs, found $n"
-            exit 1
-          fi
-
-          # confirm that we have devices published as resourceslices.
-          want=$(( selected * ${{ env.dummy_device_count }} ))
-          for _ in $(seq 1 90); do
-            got=$(kubectl get resourceslices -o json \
-              | jq '[.items[].spec.devices[]? | select(.attributes["deviceManager"].string == "dummy")] | length')
-            [ "$got" -eq "$want" ] && break
-            sleep 2
-          done
-          kubectl get resourceslices -o wide
-          if [ "$got" -ne "$want" ]; then
-            echo "Expected $want dummy devices in ResourceSlices, found $got"
-            exit 1
-          fi
 
       - name: Make JUnit report directory
         run: |
