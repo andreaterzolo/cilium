@@ -327,6 +327,7 @@ func (o *orchestrator) reconciler(ctx context.Context, health cell.Health) error
 			} else {
 				// Reinitializing is expensive, only do so if the configuration has changed.
 				prevConfig := o.latestLocalNodeConfig.Load()
+				// todo!: rename the DeepEqual method into `RequiresDatapathReinitialize`
 				if prevConfig == nil || !prevConfig.DeepEqual(&localNodeConfig) {
 					err = o.reinitialize(request.ctx, &localNodeConfig)
 					if err != nil {

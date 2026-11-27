@@ -60,23 +60,6 @@ func (in *Config) deepEqual(other *Config) bool {
 		}
 	}
 
-	if ((in.NodeAddresses != nil) && (other.NodeAddresses != nil)) || ((in.NodeAddresses == nil) != (other.NodeAddresses == nil)) {
-		in, other := &in.NodeAddresses, &other.NodeAddresses
-		if other == nil {
-			return false
-		}
-
-		if len(*in) != len(*other) {
-			return false
-		} else {
-			for i, inElement := range *in {
-				if !inElement.DeepEqual(&(*other)[i]) {
-					return false
-				}
-			}
-		}
-	}
-
 	if in.DeriveMasqIPAddrFromDevice != other.DeriveMasqIPAddrFromDevice {
 		return false
 	}

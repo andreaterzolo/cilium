@@ -111,6 +111,7 @@ type Config struct {
 	// as this node's addresses. From this set we pick the addresses that are
 	// used as NodePort frontends and the addresses to use for BPF masquerading.
 	// Mutable at runtime.
+	// +deepequal-gen=false
 	NodeAddresses []tables.NodeAddress
 
 	// DeriveMasqIPAddrFromDevice overrides the interface name to use for deriving
@@ -324,8 +325,57 @@ func (cfg *Config) DeepEqual(other *Config) bool {
 	if cfg.LoadBalancerRSS != other.LoadBalancerRSS {
 		return false
 	}
+	if !cfg.masqueradeAddressesEqual(other) {
+		return false
+	}
 	// Call generated `deepEqual` method which compares all other fields
 	return cfg.deepEqual(other)
+}
+
+// MasqueradeAddresses returns the IPv4 and IPv6 masquerade addresses to use
+// for the given interface.
+func (cfg *Config) MasqueradeAddresses(device string, enable4, enable6 bool) (masq4, masq6 netip.Addr) {
+	if cfg.DeriveMasqIPAddrFromDevice != "" {
+		device = cfg.DeriveMasqIPAddrFromDevice
+	}
+	if enable4 {
+		masq4 = primaryAddress(device, cfg.NodeAddresses, true)
+		if !masq4.IsValid() {
+			masq4 = primaryAddress(tables.WildcardDeviceName, cfg.NodeAddresses, true)
+		}
+	}
+	if enable6 {
+		masq6 = primaryAddress(device, cfg.NodeAddresses, false)
+		if !masq6.IsValid() {
+			masq6 = primaryAddress(tables.WildcardDeviceName, cfg.NodeAddresses, false)
+		}
+	}
+	return
+}
+
+func (cfg *Config) masqueradeAddressesEqual(other *Config) bool {
+	for _, device := range cfg.DeviceNames() {
+		oldV4, oldV6 := cfg.MasqueradeAddresses(device, true, true)
+		newV4, newV6 := other.MasqueradeAddresses(device, true, true)
+		if oldV4 != newV4 || oldV6 != newV6 {
+			return false
+		}
+	}
+	return true
+}
+
+func primaryAddress(device string, addrs []tables.NodeAddress, ipv4 bool) netip.Addr {
+	for _, addr := range addrs {
+		if addr.Primary && addr.DeviceName == device && addr.Addr.Is4() == ipv4 {
+			return addr.Addr
+		}
+	}
+	for _, addr := range addrs {
+		if addr.Primary && addr.DeviceName == tables.WildcardDeviceName && addr.Addr.Is4() == ipv4 {
+			return addr.Addr
+		}
+	}
+	return netip.Addr{}
 }
 
 func (cfg *Config) DeviceNames() []string {

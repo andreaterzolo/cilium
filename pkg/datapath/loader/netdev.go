@@ -16,7 +16,6 @@ import (
 	"github.com/cilium/cilium/pkg/bpf"
 	"github.com/cilium/cilium/pkg/datapath/config"
 	"github.com/cilium/cilium/pkg/datapath/linux/safenetlink"
-	"github.com/cilium/cilium/pkg/datapath/tables"
 	"github.com/cilium/cilium/pkg/defaults"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 )
@@ -27,49 +26,7 @@ import (
 // If no suitable address is found for the given interface, fall back to
 // searching for addresses on the wildcard device name.
 func bpfMasqAddrs(ifName string, cfg *config.Config, enable4, enable6 bool) (masq4, masq6 netip.Addr) {
-	if cfg.DeriveMasqIPAddrFromDevice != "" {
-		ifName = cfg.DeriveMasqIPAddrFromDevice
-	}
-
-	if enable4 {
-		masq4 = primaryV4(ifName, cfg.NodeAddresses)
-		if !masq4.IsValid() {
-			masq4 = primaryV4(tables.WildcardDeviceName, cfg.NodeAddresses)
-		}
-	}
-
-	if enable6 {
-		masq6 = primaryV6(ifName, cfg.NodeAddresses)
-		if !masq6.IsValid() {
-			masq6 = primaryV6(tables.WildcardDeviceName, cfg.NodeAddresses)
-		}
-	}
-
-	return
-}
-
-func primaryV4(ifName string, addrs []tables.NodeAddress) netip.Addr {
-	for _, addr := range addrs {
-		if !addr.Primary || addr.DeviceName != ifName {
-			continue
-		}
-		if addr.Addr.Is4() {
-			return addr.Addr
-		}
-	}
-	return netip.Addr{}
-}
-
-func primaryV6(ifName string, addrs []tables.NodeAddress) netip.Addr {
-	for _, addr := range addrs {
-		if !addr.Primary || addr.DeviceName != ifName {
-			continue
-		}
-		if addr.Addr.Is6() {
-			return addr.Addr
-		}
-	}
-	return netip.Addr{}
+	return cfg.MasqueradeAddresses(ifName, enable4, enable6)
 }
 
 func isObsoleteDev(dev string, devices []string) bool {
